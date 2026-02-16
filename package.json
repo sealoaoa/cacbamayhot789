@@ -1,7 +1,7 @@
 {
-  "name": "game-prediction-server",
+  "name": "game-prediction-ultimate",
   "version": "1.0.0",
-  "description": "WebSocket client with prediction API for Tai Xiu games",
+  "description": "Ultimate prediction server for Tai Xiu games",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
