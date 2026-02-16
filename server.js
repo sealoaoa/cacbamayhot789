@@ -191,7 +191,8 @@ class GameWebSocketClient {
     // ==================== PHÂN TÍCH & DỰ ĐOÁN ====================
     _getRecentResults(historyArray, limit = 50) {
         if (!historyArray || historyArray.length === 0) return [];
-        return [...historyArray].sort((a,b) => b.sid - a.sid).slice(0, limit).map(s => (s.d1+s.d2+s.d3 >= 11 ? 'tài' : 'xỉu'));
+        const sorted = [...historyArray].sort((a,b) => b.sid - a.sid);
+        return sorted.slice(0, limit).map(s => (s.d1+s.d2+s.d3 >= 11 ? 'tài' : 'xỉu'));
     }
     _overallProbability(results) {
         if (results.length === 0) return { tai: 0.5, xiu: 0.5 };
@@ -328,7 +329,6 @@ class GameWebSocketClient {
     close() { if (this.ws) this.ws.close(); }
 }
 
-// Khởi tạo Express
 const app = express();
 const PORT = 3001;
 app.use(cors());
@@ -360,12 +360,66 @@ app.get('/api/refresh', (req, res) => {
     } else res.status(400).json({ error: 'Không thể refresh', message: 'WebSocket chưa sẵn sàng' });
 });
 
-// API dự đoán
+// API dự đoán (đầy đủ)
 app.get('/api/predict/tx', (req, res) => res.json({ board: 'tai_xiu', ...client.getTxPrediction(), timestamp: new Date().toISOString() }));
 app.get('/api/predict/md5', (req, res) => res.json({ board: 'md5', ...client.getMd5Prediction(), timestamp: new Date().toISOString() }));
 app.get('/api/predict/all', (req, res) => res.json({ tai_xiu: client.getTxPrediction(), md5: client.getMd5Prediction(), timestamp: new Date().toISOString() }));
 
-// Trang chủ
+// API dự đoán rút gọn (short)
+app.get('/api/predict/tx/short', (req, res) => {
+    try {
+        const pred = client.getTxPrediction();
+        const latest = client.getLatestTxSession();
+        res.json({
+            board: 'tai_xiu',
+            prediction: pred.prediction || 'không xác định',
+            confidence: pred.confidence || '0%',
+            latest_session: latest.phien || null,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Lỗi server', message: error.message });
+    }
+});
+app.get('/api/predict/md5/short', (req, res) => {
+    try {
+        const pred = client.getMd5Prediction();
+        const latest = client.getLatestMd5Session();
+        res.json({
+            board: 'md5',
+            prediction: pred.prediction || 'không xác định',
+            confidence: pred.confidence || '0%',
+            latest_session: latest.phien || null,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Lỗi server', message: error.message });
+    }
+});
+app.get('/api/predict/all/short', (req, res) => {
+    try {
+        const txPred = client.getTxPrediction();
+        const txLatest = client.getLatestTxSession();
+        const md5Pred = client.getMd5Prediction();
+        const md5Latest = client.getLatestMd5Session();
+        res.json({
+            tai_xiu: {
+                prediction: txPred.prediction || 'không xác định',
+                confidence: txPred.confidence || '0%',
+                latest_session: txLatest.phien || null
+            },
+            md5: {
+                prediction: md5Pred.prediction || 'không xác định',
+                confidence: md5Pred.confidence || '0%',
+                latest_session: md5Latest.phien || null
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Lỗi server', message: error.message });
+    }
+});
+
 app.get('/', (req, res) => {
     res.send(`
         <html>
@@ -376,11 +430,6 @@ app.get('/', (req, res) => {
                 .endpoint { background: white; padding: 20px; border-radius: 10px; margin:20px 0; }
                 .btn { background: #1890ff; color:white; padding:10px 15px; border:none; border-radius:5px; cursor:pointer; margin:5px; }
                 .btn:hover { background: #40a9ff; }
-                .board { display:inline-block; padding:10px; margin:5px; border-radius:5px; vertical-align:top; width:45%; }
-                .board-tx { background:#e6f7ff; border:1px solid #91d5ff; }
-                .board-md5 { background:#f6ffed; border:1px solid #b7eb8f; }
-                .prediction-box { margin-top:20px; padding:15px; background:#fffbe6; border:1px solid #ffe58f; border-radius:8px; }
-                .confidence { font-weight:bold; color:#fa8c16; }
             </style>
             </head>
             <body>
@@ -390,12 +439,14 @@ app.get('/', (req, res) => {
                     <ul>
                         <li><code>GET /api/tx</code> - Phiên mới nhất bàn TX</li>
                         <li><code>GET /api/md5</code> - Phiên mới nhất bàn MD5</li>
-                        <li><code>GET /api/predict/tx</code> - Dự đoán bàn TX</li>
-                        <li><code>GET /api/predict/md5</code> - Dự đoán bàn MD5</li>
+                        <li><code>GET /api/predict/tx</code> - Dự đoán bàn TX (đầy đủ)</li>
+                        <li><code>GET /api/predict/md5</code> - Dự đoán bàn MD5 (đầy đủ)</li>
+                        <li><code>GET /api/predict/tx/short</code> - Dự đoán TX (rút gọn)</li>
+                        <li><code>GET /api/predict/md5/short</code> - Dự đoán MD5 (rút gọn)</li>
                         <li><code>GET /api/status</code> - Trạng thái</li>
                     </ul>
-                    <button class="btn" onclick="fetch('/api/predict/tx').then(r=>r.json()).then(d=>alert(JSON.stringify(d,null,2)))">Dự đoán TX</button>
-                    <button class="btn" onclick="fetch('/api/predict/md5').then(r=>r.json()).then(d=>alert(JSON.stringify(d,null,2)))">Dự đoán MD5</button>
+                    <button class="btn" onclick="fetch('/api/predict/tx/short').then(r=>r.json()).then(d=>alert(JSON.stringify(d,null,2)))">Dự đoán TX (short)</button>
+                    <button class="btn" onclick="fetch('/api/predict/md5/short').then(r=>r.json()).then(d=>alert(JSON.stringify(d,null,2)))">Dự đoán MD5 (short)</button>
                 </div>
                 <div id="status"></div>
                 <script>
